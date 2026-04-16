@@ -1,0 +1,58 @@
+arquitectura:
+  nombre: "Sistema de Reintentos Microservicios"
+  descripcion: "Un ecosistema de microservicios que maneja fallos en la creacion de pagos, ordenes y productos mediante el uso de colas de Kafka y un broker de reintentos con el patron Chain of Responsibility."
+  proyectos:
+    - name: "eureka-server"
+      port: 8761
+      role: "Service Discovery"
+    - name: "payment-service"
+      port: 8081
+      role: "Productor de pagos (Simula fallos)"
+    - name: "order-service"
+      port: 8082
+      role: "Productor de ordenes (Simula fallos)"
+    - name: "product-service"
+      port: 8083
+      role: "Productor de productos (Simula fallos)"
+    - name: "broker-message-be"
+      port: 8080
+      role: "Consumidor, Scheduler y Orquestador de reintentos"
+
+funcionamiento:
+  paso_1: "El usuario envia una peticion POST a un servicio (ej. /api/payments)."
+  paso_2: "Si el servicio falla (configurado por defecto), envia el payload a un topico de Kafka (ej. payments_retry_jobs)."
+  paso_3: "El broker-message-be escucha el topico y guarda el job en la base de datos (MySQL)."
+  paso_4: "Un scheduler en broker-message-be se ejecuta cada 10 segundos buscando jobs con status PENDING."
+  paso_5: "Se ejecuta el 'Chain of Responsibility':"
+    - paso_a: "Reintento de llamado al endpoint original."
+    - paso_b: "Envio de correo de exito (MailHog)."
+    - paso_c: "Actualizacion de status a SUCCESS."
+  paso_6: "Si falla cualquier paso de la cadena, el job se marca como FAILED y se envia un correo de error."
+
+pruebas:
+  endpoint_pago:
+    method: "POST"
+    url: "http://localhost:8081/api/payments"
+    payload:
+      id: "123"
+      name: "Suscripcion Premium"
+      amount: 99.99
+    desc: "Al enviarlo, fallara inicialmente y se enviara a Kafka. Veras el reintento en el broker cada 10s."
+  toggle_failure:
+    method: "PUT"
+    url: "http://localhost:8081/api/payments/toggle"
+    desc: "Cambia el estado de fallo para que el reintento del broker sea exitoso la proxima vez que el scheduler lo intente."
+  verificar_correos:
+    url: "http://localhost:8025"
+    desc: "Interfaz de MailHog para ver los correos de exito o fallo."
+  monitoreo_db:
+    database: "retry_db"
+    tables:
+      - "payments_retry_jobs"
+      - "order_retry_jobs"
+      - "product_retry_jobs"
+      - "retry_jobs"
+
+instrucciones_inicio:
+  script: "./start.sh"
+  requisitos: "Docker, Maven, Java 17"
